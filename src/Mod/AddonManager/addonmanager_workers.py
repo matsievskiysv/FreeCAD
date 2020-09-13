@@ -30,6 +30,7 @@ import tempfile
 import FreeCAD
 
 from PySide import QtCore
+import markdown
 
 import addonmanager_utilities as utils
 from addonmanager_utilities import translate # this needs to be as is for pylupdate
@@ -358,12 +359,8 @@ class ShowWorker(QtCore.QThread):
                 if sys.version_info.major >= 3 and isinstance(p, bytes):
                     p = p.decode("utf-8")
                 u.close()
-                readmeregex = utils.getReadmeRegex(url)
-                if readmeregex:
-                    readme = re.findall(readmeregex,p,flags=re.MULTILINE|re.DOTALL)
-                    if readme:
-                        desc += readme[0]
-            if not desc:
+                desc = markdown.markdown(p,extensions=['md_in_html'])
+            if desc == "":
                 # fall back to the description text
                 u = utils.urlopen(url)
                 if not u:
@@ -378,7 +375,7 @@ class ShowWorker(QtCore.QThread):
                 if descregex:
                     desc = re.findall(descregex,p)
                     if desc:
-                        desc = "<br/>"+desc[0]
+                        desc = desc[0]
             if not desc:
                 desc = "Unable to retrieve addon description"
             self.repos[self.idx].append(desc)
