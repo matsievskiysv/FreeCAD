@@ -82,7 +82,7 @@ class UpdateWorker(QtCore.QThread):
         "populates the list of addons"
 
         self.progressbar_show.emit(True)
-        u = utils.urlopen("https://github.com/FreeCAD/FreeCAD-addons")
+        u = utils.urlopen("https://raw.githubusercontent.com/FreeCAD/FreeCAD-addons/master/.gitmodules")
         if not u:
             self.progressbar_show.emit(False)
             self.done.emit()
@@ -92,32 +92,23 @@ class UpdateWorker(QtCore.QThread):
         if sys.version_info.major >= 3 and isinstance(p, bytes):
             p = p.decode("utf-8")
         u.close()
-        p = p.replace("\n"," ")
-        p = re.findall("octicon-file-submodule(.*?)message",p)
+        p = re.findall((r"(?m)\[submodule\s*\"(?P<name>.*)\"\]\s*"
+                        "path\s*=\s*(?P<path>.+)\s*"
+                        "url\s*=\s*(?P<url>https?://.*)\.git"), p)
         basedir = FreeCAD.getUserAppDataDir()
         moddir = basedir + os.sep + "Mod"
         repos = []
         # querying official addons
-        for l in p:
-            #name = re.findall("data-skip-pjax=\"true\">(.*?)<",l)[0]
-            res = re.findall("title=\"(.*?) @",l)
-            if res:
-                name = res[0]
-            else:
-                print("AddonMananger: Debug: couldn't find title in",l)
-                continue
+        for name, path, url in p:
+            # name = name.replace("_", " ").capitalize()  # cleanup name
             self.info_label.emit(name)
-            #url = re.findall("title=\"(.*?) @",l)[0]
-            url = utils.getRepoUrl(l)
-            if url:
-                addondir = moddir + os.sep + name
-                #print ("found:",name," at ",url)
-                if os.path.exists(addondir) and os.listdir(addondir):
-                    # make sure the folder exists and it contains files!
-                    state = 1
-                else:
-                    state = 0
-                repos.append([name,url,state])
+            addondir = moddir + os.sep + name
+            if os.path.exists(addondir) and os.listdir(addondir):
+                # make sure the folder exists and it contains files!
+                state = 1
+            else:
+                state = 0
+            repos.append([name, url, state])
         # querying custom addons
         customaddons = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Addons").GetString("CustomRepositories","").split("\n")
         for url in customaddons:
