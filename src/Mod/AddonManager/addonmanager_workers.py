@@ -95,7 +95,7 @@ class UpdateWorker(QtCore.QThread):
         u.close()
         p = re.findall((r"(?m)\[submodule\s*\"(?P<name>.*)\"\]\s*"
                         "path\s*=\s*(?P<path>.+)\s*"
-                        "url\s*=\s*(?P<url>https?://.*)\.git"), p)
+                        "url\s*=\s*(?P<url>https?://.*)"), p)
         basedir = FreeCAD.getUserAppDataDir()
         moddir = basedir + os.sep + "Mod"
         repos = []
@@ -103,6 +103,7 @@ class UpdateWorker(QtCore.QThread):
         for name, path, url in p:
             # name = name.replace("_", " ").capitalize()  # cleanup name
             self.info_label.emit(name)
+            url = url.rstrip(".git")
             addondir = moddir + os.sep + name
             if os.path.exists(addondir) and os.listdir(addondir):
                 # make sure the folder exists and it contains files!
