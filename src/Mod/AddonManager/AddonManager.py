@@ -44,9 +44,15 @@ import stat
 import sys
 import tempfile
 
+import FreeCADGui
+from PySide import QtCore, QtGui
+from PySide2 import QtWidgets
+from PySide2 import QtWebEngineWidgets
+
 import addonmanager_utilities as utils
 from addonmanager_utilities import translate # this needs to be as is for pylupdate
 from addonmanager_workers import *
+
 
 def QT_TRANSLATE_NOOP(ctx,txt):
     return txt
@@ -70,7 +76,6 @@ class CommandAddonManager:
 
         # display first use dialog if needed
 
-        from PySide import QtGui
         readWarning = FreeCAD.ParamGet('User parameter:Plugins/addonsRepository').GetBool('readWarning',False)
         if not readWarning:
             if QtGui.QMessageBox.warning(None,"FreeCAD",translate("AddonsInstaller", "The addons that can be installed here are not officially part of FreeCAD, and are not reviewed by the FreeCAD team. Make sure you know what you are installing!"), QtGui.QMessageBox.Cancel | QtGui.QMessageBox.Ok) != QtGui.QMessageBox.StandardButton.Cancel:
@@ -83,9 +88,6 @@ class CommandAddonManager:
     def launch(self):
 
         """Shows the Addon Manager UI"""
-
-        import FreeCADGui
-        from PySide import QtGui
 
         # create the dialog
         self.dialog = FreeCADGui.PySideUic.loadUi(os.path.join(os.path.dirname(__file__),"AddonManager.ui"))
@@ -146,9 +148,10 @@ class CommandAddonManager:
         self.dialog.buttonConfigure.clicked.connect(self.show_config)
         self.dialog.buttonClose.clicked.connect(self.dialog.reject)
 
-        # allow to open links in browser
-        self.dialog.description.setOpenLinks(True)
-        self.dialog.description.setOpenExternalLinks(True)
+        # setup html viewer
+        self.dialog.webPage = WebViewWidget()
+        self.dialog.description.layout().addWidget(self.dialog.webPage)
+        self.dialog.webPage.show()
 
         # center the dialog over the FreeCAD window
         mw = FreeCADGui.getMainWindow()
@@ -289,7 +292,7 @@ class CommandAddonManager:
 
         """shows text in the information pane"""
 
-        self.dialog.description.setText(label)
+        self.dialog.webPage.showMessage(label)
         if self.dialog.listWorkbenches.isVisible():
             self.dialog.listWorkbenches.setFocus()
         else:
@@ -428,9 +431,11 @@ class CommandAddonManager:
             # Tab "Macros".
             macro = self.macros[self.dialog.listMacros.currentRow()]
             if utils.install_macro(macro, self.macro_repo_dir):
-                self.dialog.description.setText(translate("AddonsInstaller", "Macro successfully installed. The macro is now available from the Macros dialog."))
+                self.dialog.webPage.showMessage(translate("AddonsInstaller",
+                                                          ("Macro successfully installed. "
+                                                           "The macro is now available from the Macros dialog.")))
             else:
-                self.dialog.description.setText(translate("AddonsInstaller", "Unable to install"))
+                self.dialog.webPage.showMessage(translate("AddonsInstaller", "Unable to install"))
 
     def show_progress_bar(self, state):
 
@@ -492,17 +497,20 @@ class CommandAddonManager:
             clonedir = moddir + os.sep + self.repos[idx][0]
             if os.path.exists(clonedir):
                 shutil.rmtree(clonedir, onerror=self.remove_readonly)
-                self.dialog.description.setText(translate("AddonsInstaller", "Addon successfully removed. Please restart FreeCAD"))
+                self.dialog.webPage.showMessage(translate("AddonsInstaller",
+                                                          ("Addon successfully removed. "
+                                                           "Please restart FreeCAD")))
             else:
-                self.dialog.description.setText(translate("AddonsInstaller", "Unable to remove this addon"))
+                self.dialog.webPage.showMessage(translate("AddonsInstaller",
+                                                          "Unable to remove this addon"))
 
         elif self.dialog.tabWidget.currentIndex() == 1:
             # Tab "Macros".
             macro = self.macros[self.dialog.listMacros.currentRow()]
             if utils.remove_macro(macro):
-                self.dialog.description.setText(translate('AddonsInstaller', 'Macro successfully removed.'))
+                self.dialog.webPage.showMessage(translate('AddonsInstaller', 'Macro successfully removed.'))
             else:
-                self.dialog.description.setText(translate('AddonsInstaller', 'Macro could not be removed.'))
+                self.dialog.webPage.showMessage(translate('AddonsInstaller', 'Macro could not be removed.'))
         self.update_status(soft=True)
         self.addon_removed = True # A value to trigger the restart message on dialog close
 
@@ -528,7 +536,6 @@ class CommandAddonManager:
         """
 
         moddir = FreeCAD.getUserAppDataDir() + os.sep + "Mod"
-        from PySide import QtGui
         if soft:
             for i in range(self.dialog.listWorkbenches.count()):
                 txt = self.dialog.listWorkbenches.item(i).text().strip()
@@ -591,8 +598,6 @@ class CommandAddonManager:
 
         """shows the configuration dialog"""
 
-        import FreeCADGui
-        from PySide import QtGui
         self.config = FreeCADGui.PySideUic.loadUi(os.path.join(os.path.dirname(__file__),"AddonManagerOptions.ui"))
 
         # restore stored values
@@ -626,5 +631,42 @@ def check_updates(addon_name,callback):
     setattr(FreeCAD,oname,CheckSingleWorker(addon_name))
     getattr(FreeCAD,oname).updateAvailable.connect(callback)
     getattr(FreeCAD,oname).start()
+
+
+class WebViewWidget(QtWidgets.QWidget):
+    """Render description and Readme page."""
+    PAGE = """
+<!doctype html>
+<html>
+    <head>
+	<title></title>
+	<meta charset="utf-8" />
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/1.9.0/showdown.min.js"></script>
+    </head>
+    <body>
+	<div id="readme"></div>
+	<script>
+	 var container = document.getElementById("readme");
+	 var converter = new showdown.Converter(),
+	     text      = `!README!`,
+	     html      = converter.makeHtml(text);
+	 container.innerHTML = html;
+	</script>
+    </body>
+</html>
+"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.vl = QtWidgets.QVBoxLayout()
+        self.vl.setContentsMargins(0, 0, 0, 0)
+        self.view = QtWebEngineWidgets.QWebEngineView()
+        self.vl.addWidget(self.view)
+        self.setLayout(self.vl)
+
+    def showMessage(self, message):
+        self.view.setHtml(self.PAGE.replace("!README!",
+                                            message.replace(r"`", r"\`")))
 
 ## @}

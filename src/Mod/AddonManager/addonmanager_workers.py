@@ -94,14 +94,13 @@ class UpdateWorker(QtCore.QThread):
             p = p.decode("utf-8")
         u.close()
         p = re.findall((r"(?m)\[submodule\s*\"(?P<name>.*)\"\]\s*"
-                        "path\s*=\s*(?P<path>.+)\s*"
-                        "url\s*=\s*(?P<url>https?://.*)"), p)
+                        r"path\s*=\s*(?P<path>.+)\s*"
+                        r"url\s*=\s*(?P<url>https?://.*)"), p)
         basedir = FreeCAD.getUserAppDataDir()
         moddir = basedir + os.sep + "Mod"
         repos = []
         # querying official addons
         for name, path, url in p:
-            # name = name.replace("_", " ").capitalize()  # cleanup name
             self.info_label.emit(name)
             url = url.rstrip(".git")
             addondir = moddir + os.sep + name
